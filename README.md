@@ -4,7 +4,7 @@ Crystal Visualisation for CASTEP calculations including non-collinear magnetism.
 
 ## SIMPLE VISUALISATION
 For the most basic visualisation, all you need is a CASTEP <seed>.cell file.
-'''
+```
 nc_cryst seed
 '''
 
