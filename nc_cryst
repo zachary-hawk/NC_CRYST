@@ -739,7 +739,7 @@ if xsf_file!=None:
                 if dospin:
                     for i in range(len(V3D)):
                         mesh_mag[int(V3D[i,0]-1),int(V3D[i,1]-1),int(V3D[i,2]-1)]=spin[i]
-
+            mesh_mag=mesh_mag/(nx*ny*nz)
 
     print("NCM: ",noncollinear)
     print("POT: ",potfile)
