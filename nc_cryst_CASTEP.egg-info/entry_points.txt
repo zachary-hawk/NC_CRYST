@@ -1,0 +1,3 @@
+[console_scripts]
+nc_cryst = nc_cryst.__main__:main
+

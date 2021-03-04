@@ -1,0 +1,14 @@
+.gitignore
+LICENSE
+README.md
+setup.py
+nc_cryst/__init__.py
+nc_cryst/__main__.py
+nc_cryst/nc_fort.f90
+nc_cryst/read_xsf.py
+nc_cryst_CASTEP.egg-info/PKG-INFO
+nc_cryst_CASTEP.egg-info/SOURCES.txt
+nc_cryst_CASTEP.egg-info/dependency_links.txt
+nc_cryst_CASTEP.egg-info/entry_points.txt
+nc_cryst_CASTEP.egg-info/requires.txt
+nc_cryst_CASTEP.egg-info/top_level.txt

@@ -1,0 +1,22 @@
+%block lattice_abc
+2.856 2.856 2.856
+90.0 90.0 90.0
+%endblock lattice_abc
+
+%block positions_frac
+Fe 0.0 0.0 0.0 spin=2
+Fe 0.5 0.5 0.5 spin=2
+%endblock positions_frac
+
+symmetry_generate
+fix_all_cell : True
+
+QUANTISATION_AXIS : 0 0 1
+
+%block spectral_kpoint_path
+0.0 0.0 0.0 
+1.0 0.0 0.0
+0.5 0.5 0.5
+0.5 0.5 0.0
+0.0 0.0 0.0
+%endblock spectral_kpoint_path
