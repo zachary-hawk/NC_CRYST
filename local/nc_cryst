@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import numpy as np
-from nc_cryst import read_xsf as xsf
+#from nc_cryst import read_xsf as xsf
+import read_xsf as xsf
 import matplotlib.pyplot as plt
 import sys,os
 from scipy.interpolate import RegularGridInterpolator
@@ -21,9 +22,9 @@ from ase.build import cut,make_supercell
 from ase.calculators.castep import Castep
 import ase.spacegroup as spg
 import time
-from nc_fort import nc_fort
-from  tkinter import *
-
+import nc_fort
+#from  tkinter import *
+from ase.visualize import view
 
 def main():
 
@@ -93,14 +94,7 @@ def main():
         if z_color is None:
             z_color = rcParams['axes']['z_color']
         axes_actor = vtk.vtkAxesActor()
-    
-        axes_actor.GetXAxisShaftProperty().SetColor(parse_color(x_color))
-        axes_actor.GetXAxisTipProperty().SetColor(parse_color(x_color))
-        axes_actor.GetYAxisShaftProperty().SetColor(parse_color(y_color))
-        axes_actor.GetYAxisTipProperty().SetColor(parse_color(y_color))
-        axes_actor.GetZAxisShaftProperty().SetColor(parse_color(z_color))
-        axes_actor.GetZAxisTipProperty().SetColor(parse_color(z_color))
-        
+
         transform=vtk.vtkTransform()
         mat=transform.GetMatrix()
         latt_or=np.array(latt)
@@ -113,8 +107,16 @@ def main():
     
         axes_actor.SetUserTransform(transform)
     
+        axes_actor.GetXAxisShaftProperty().SetColor(parse_color(x_color))
+        axes_actor.GetXAxisTipProperty().SetColor(parse_color(x_color))
+        axes_actor.GetYAxisShaftProperty().SetColor(parse_color(y_color))
+        axes_actor.GetYAxisTipProperty().SetColor(parse_color(y_color))
+        axes_actor.GetZAxisShaftProperty().SetColor(parse_color(z_color))
+        axes_actor.GetZAxisTipProperty().SetColor(parse_color(z_color))
+        
+
         text=vtk.vtkTextProperty()
-        text.SetFontSize(100)
+        text.SetFontSize(10)
         text.SetBold(True)
         text.SetFontFamilyAsString("Times")
         
@@ -141,7 +143,8 @@ def main():
     
         #axes_actor.SetNormalizedShaftLength(1.6,1.6,1.6)
         #axes_actor.SetNormalizedTipLength(0.4,0.4,0.4)
-        #axes_actor.SetTotalLength(2,2,2)
+        #axes_actor.SetTotalLength(3,3,3)
+        axes_actor.SetScale(20)
         return axes_actor
     
     
@@ -169,6 +172,7 @@ def main():
         lines=np.zeros((2*len(point_grid),N,3))
         mag=np.zeros((2*len(point_grid),N))
         j=-1
+        point_grid=nc_fort.multmatmul(latt,point_grid,len(point_grid))
         for o,r0 in enumerate(point_grid):
             F_old=[0,0,0]
             F_mag=0
@@ -181,7 +185,13 @@ def main():
     
                 r=r0
                 for n in range(N):
-                    s=0.01
+                    s=0.05
+
+                    
+                    #r=np.matmul(latt,r)
+                    
+
+                    
                     xs.append(r[0])
                     ys.append(r[1])
                     zs.append(r[2])
@@ -193,11 +203,15 @@ def main():
                         break
     
                     track_r=np.vstack((track_r,r))
-    
-                    if r[0]>=np.max(X) or r[0] <= np.min(X) or r[1] >= np.max(Y) or r[1] <= np.min(Y) or r[2] >= np.max(Z) or r[2] <= np.min(Z):
-    
+                    x,y,z=np.matmul(np.linalg.inv(latt),r)
+                    #x,y,z=r
+                    #print(r,x,y,z)
+                    if x>=np.max(X) or x <= np.min(X) or y >= np.max(Y) or y <= np.min(Y) or z >= np.max(Z) or z <= np.min(Z):
+                        
                         break
-                    x,y,z=r
+                    
+                    
+
     
                     try:
                         vec_x=f_x([x,y,z])
@@ -217,9 +231,18 @@ def main():
                     
                     F=np.array([vec_x[0],vec_y[0],vec_z[0]])#line_gen(r)
                     F_mag=F
+                    #if n==0:
+                    #    # plot a little arrow
+                    #    direction = pv.Arrow(r,F,scale=0.1)
+                    #    p.add_mesh(direction)
+                        
+                    #print(F)
+                    #print()
                     F=F/np.linalg.norm(F)
                     phi=np.dot(F,F_old)
                     phi=np.arccos(phi)/np.pi
+
+                    
                     #print(n,phi)
                     if np.round(phi,4)==1:
                         break
@@ -299,6 +322,13 @@ def main():
     parser.add_argument("-S","--spin",help="Plot spin isosurfaces from .den_fmt",action="store_true")
     parser.add_argument("-C","--charge",help="Plot charge isosurfaces from .den_fmt",action="store_true")
     parser.add_argument("-r","--reduction",help="Factor used to reduce the size of atoms, useful for visualising volumetric data without loss of context.",default=1.0)
+    parser.add_argument("--flip",default=-1)
+    parser.add_argument("--vec_field",help="Plot a vector field of the spin density",action="store_true",default=False)
+    parser.add_argument("--man_spin",action='store_true')
+    parser.add_argument('-vc','--vec_cutoff',type=float,help="Magnitude cut off for inclusion in vector field",default=0.2)
+    parser.add_argument('-tol','--vec_tol',type=float,help="Tolerance for grouping vectors in vector field",default=0.01)
+    parser.add_argument('--fmag',action='store_true',help='Turn off opacity for field lines')
+    parser.add_argument('--skip',help='Factor to reduce the vec grid',default=31,type=int)
     args = parser.parse_args()
     seed = args.seed
     #do_legend = args.legend
@@ -313,7 +343,7 @@ def main():
     save=args.save
     hide=args.delete
     cam_pos=args.position
-    z=np.float(args.zoom)
+    zoom=np.float(args.zoom)
     hide_lines=args.lines
     plane=args.plane
     exclude=args.exclude
@@ -323,8 +353,15 @@ def main():
     dospin=args.spin
     reduction=np.float(args.reduction)
     iso=args.iso
-    
-    if plane==None:
+    flip_y=np.float(args.flip)
+    manual_spin=args.man_spin
+    vec_f=args.vec_field
+    vc=args.vec_cutoff
+    tol=args.vec_tol
+    fmag=args.fmag
+    skip=args.skip
+
+    if plane==None:    
         do_plane=False
     
     elif len(plane)==9:
@@ -395,12 +432,12 @@ def main():
     
     
     # Open the tkinter window
-    window=Tk()
-    window.resizable(False, False)
-    window.title("NC_CRYST: "+seed)
+    #window=Tk()
+    #window.resizable(False, False)
+    #window.title("NC_CRYST: "+seed)
     
-    output=Text(window)
-    output.grid(row=1,column=0,columnspan=4)#,sticky=N+S+W)
+    #output=Text(window)
+    #output.grid(row=1,column=0,columnspan=4)#,sticky=N+S+W)
     
     
     
@@ -425,11 +462,14 @@ def main():
     ase_cell=cell.get_cell()
     a,b,c,alpha,beta,gamma=cell.get_cell_lengths_and_angles()
     pos=cell.get_positions()
+    frac=cell.get_scaled_positions()
+
     prim_pos=pos
     cell.set_calculator(ccalc)
     latt=np.transpose(np.matmul(np.identity(3),cell.get_cell()))
-    
-    
+    #geom=open(seed+".geom")
+    #geom=io.castep.read_castep_geom(geom)
+
     
     init_mag=np.zeros((len(pos),3))
     init_spin=np.zeros((len(pos),3))
@@ -474,7 +514,7 @@ def main():
                     if dist<0.00001:
                         init_spin[j]=init_mag[i]
     
-    
+
     cell.set_velocities(init_spin)
     
     
@@ -487,8 +527,8 @@ def main():
     Vol=cell.get_volume()
     enablePrint()
     #print(pos)
-    
-    
+
+
     atom_colours=jmol_colors[atoms]
     atom_radii=vdw_radii[atoms]
 
@@ -534,39 +574,79 @@ def main():
     sort=np.array(sort)
     
         
-    if do_magmom:
+    if do_magmom and not manual_spin:
     
         with open(seed+".castep") as castep:
             castep_lines=castep.readlines()
-    
-        for no,test in enumerate(castep_lines):
-            if "Noncollinear Spin Vectors" in test:
-                line_no=no
-        mom_vec=[]
-        vec_symb = []
-        for i in range(line_no+4,line_no+4+len(prim_pos)):
-            cline=castep_lines[i]
-            cline=cline.split()
-            vec=[np.float(cline[2]),np.float(cline[3]),np.float(cline[4])]
-            vec_symb.append(cline[0])
-            mom_vec.append(vec)
-        #print(mom_vec)
-        vec_symb_2=list(vec_symb)
-        mom_vec_2=list(mom_vec)
-        for i in range(len(sort)):
-            vec_symb_2[sort[i]]=vec_symb[i]
-            mom_vec_2[sort[i]]=mom_vec[i]
+        try:
+            for no,test in enumerate(castep_lines):
+                if "Noncollinear Spin Vectors" in test:
+                    line_no=no
             
-        vec_symb=list(vec_symb_2)
-        mom_vec=list(mom_vec_2)
-    
+            mom_vec=[]
+            vec_symb = []
+            for i in range(line_no+4,line_no+4+len(prim_pos)):
+                cline=castep_lines[i]
+                cline=cline.split()
+                vec=[np.float(cline[2]),np.float(cline[3]),np.float(cline[4])]
+                vec_symb.append(cline[0])
+                mom_vec.append(vec)
+            #print(mom_vec)
+            vec_symb_2=list(vec_symb)
+            mom_vec_2=list(mom_vec)
+            for i in range(len(sort)):
+                vec_symb_2[sort[i]]=vec_symb[i]
+                mom_vec_2[sort[i]]=mom_vec[i]
+            
+            vec_symb=list(vec_symb_2)
+            mom_vec=list(mom_vec_2)
+
+
+        except:
+            for no,test in enumerate(castep_lines):
+                if "Atomic Populations (Mulliken)" in test:
+                    line_no=no
+
+            mom_vec=[]
+            vec_symb = []
+            for i in range(line_no+4,(line_no+4+2*len(prim_pos)),2):
+                cline=castep_lines[i]
+                cline=cline.split()
+                #print(cline)
+                vec=[np.float(cline[9])*np.float(cline[10]),np.float(cline[9])*np.float(cline[11]),np.float(cline[9])*np.float(cline[12])]
+                vec_symb.append(cline[0])
+                mom_vec.append(vec)
+                #print(i,line_no+4+len(prim_pos))
+            vec_symb_2=list(vec_symb)
+            mom_vec_2=list(mom_vec)
+            for i in range(len(sort)):
+                vec_symb_2[sort[i]]=vec_symb[i]
+                mom_vec_2[sort[i]]=mom_vec[i]
+
+            vec_symb=list(vec_symb_2)
+            mom_vec=list(mom_vec_2)
+    elif manual_spin:
+        mom_vec=np.loadtxt(seed+".spin")[:,0:3]
+
     if do_magmom:
         ccell=cell.copy()
         ccell.set_velocities(mom_vec)
+        
         ccell=make_supercell(ccell,3*np.identity(3))
+
         mom_vec=ccell.get_velocities()
-    
-    
+        pos_super=ccell.get_positions()
+        mom_vec_test=list(mom_vec)
+
+        # Find a mapping
+        mom_map=np.zeros(len(mom_vec),dtype=bool)
+        for i in range(len(pos_super)):
+            #mom_vec_test=list(mom_vec_2)
+            if (np.isclose(pos_super[i],pos,atol=1e-6)==[True,True,True]).all(axis=1).any():
+                mom_map[i]=True
+        mom_vec=mom_vec[mom_map]
+        
+
     sort=np.argsort(atoms)
     
     
@@ -627,10 +707,56 @@ def main():
     
     
     test=create_axes_marker2(
-                    label_color="black", line_width=4,
+                    label_color="black", line_width=11,
                     x_color="r", y_color="g", z_color="b",
                     xlabel="a", ylabel="b", zlabel="c", labels_off=False)
-    p.add_orientation_widget(test)
+
+
+    #p.add_orientation_widget(test,interactive=True)
+    #p.add_axes()
+    test2=pv.create_axes_marker(
+        label_color=None,
+        x_color=None,
+        y_color=None,
+        z_color=None,
+        xlabel='a',
+        ylabel='b',
+        zlabel='c',
+        labels_off=False,
+        line_width=19,
+        cone_radius=0.6,
+        shaft_length=0.8,
+        tip_length=0.2,
+        ambient=0.2,
+        label_size=(0.3, 0.14)
+    )
+    '''
+    cone_radius=0.6,
+    shaft_length=0.7,                       
+    tip_length=0.3,
+    ambient=0.0,
+    label_size=(0.4, 0.16),
+    xlabel='a',
+    ylabel='b',
+    zlabel='c',
+    line_width=17)
+    '''
+
+
+    transform=vtk.vtkTransform()
+    mat=transform.GetMatrix()
+    latt_or=np.array(latt)
+    latt_or[:,0]=0.8*latt_or[:,0]/np.linalg.norm(latt_or[:,0])
+    latt_or[:,1]=0.8*latt_or[:,1]/np.linalg.norm(latt_or[:,1])
+    latt_or[:,2]=0.8*latt_or[:,2]/np.linalg.norm(latt_or[:,2])
+    for i in range(len(latt)):
+        for j in range(len(latt)):
+            mat.SetElement(i,j,2*latt_or[i,j])
+            
+    test2.SetUserTransform(transform)
+
+    p.add_orientation_widget(test2) 
+    
     
     
     ########################################################################################################################
@@ -682,16 +808,46 @@ def main():
     
         
             if potfile:
+
                 if np.shape(V3D)[1]==9:
                     noncollinear=True
                     V1= V3D[:,3]+1j*V3D[:,4]
                     V2= V3D[:,5]+1j*V3D[:,6]
                     V3= V3D[:,7]+1j*V3D[:,8]
+
+                    ''' MUSINGS ON NCM MATRICES '''
+                    # V_up_down=V_down_up*  ; V_down_up=V_up_down*
+                    # if V3 is V_up_down (ie upper right) V_up_down = V3D[:,7]+1j*V3D[:,8] and V_down_up = V3D[:,7]-1j*V3D[:,8] 
+                    # if V3 is V_down_up (ie lower left ) V_down_up = V3D[:,7]+1j*V3D[:,8] and V_up_down = V3D[:,7]-1j*V3D[:,8]
+
+                    # B_y(r) =  i * (V_up_down - V_down_up)
+                    # The correct fields are given by V3* - V3  which means that V3=V_down_up (ie lower left)
+
                     
+                
                     
                     B_x=np.real((V3+np.conj(V3))/2)
-                    B_y=np.real(1j*(V3-np.conj(V3))/2)
+                    B_y=flip_y*np.real(1j*(V3-np.conj(V3))/2)
                     B_z=np.real((V1-V2)/2)
+                    vec_B=np.vstack((B_x,B_y,B_z)).T
+
+                    spin=np.sqrt(np.sum(vec_B**2,axis=1))
+                    if vec_f:
+
+                        small_grid=V3D[0:-1:skip,0:3]
+                        point_cloud=pv.PolyData(nc_fort.multmatmul(latt,(small_grid[:,0:3]-0.5)/np.array((nx,ny,nz)),len(small_grid[:,0])))
+                        point_cloud['scalars']=abs(spin[0:-1:skip]/np.max(spin[0:-1:skip]))
+                        point_cloud['vectors']=vec_B[0:-1:skip]/np.max(spin[0:-1:skip])
+                        #mask = point_cloud['scalars'] < vc
+                        point_cloud.clip_scalar(value=vc,inplace=True,invert=False,scalars='scalars')
+                        #point_cloud['scalars'][mask] = 0
+
+                        #print(point_cloud['vectors'][mask])
+
+                        geom = pv.Arrow()
+                        glyphs = point_cloud.glyph(orient="vectors",scale='scalars',factor=0.7, geom=geom,tolerance=tol )
+                        p.add_mesh(glyphs,show_scalar_bar=False, lighting=False, cmap='Reds',opacity=0.51)
+
                 else:
                     noncollinear=False
                     print("3D data only accepted for NCM .pot_fmt, Exiting...")
@@ -705,9 +861,28 @@ def main():
                     B_z=V3D[:,6]
                     charge=V3D[:,3]
                     mesh_mag=np.zeros((nx,ny,nz))
+                    mesh_mag_vec=np.zeros((nx,ny,nz,3))
+                    spin=np.sqrt(B_x**2+B_y**2+B_z**2)
                     if docharge:
                         for i in range(len(V3D)):
                             mesh_mag[int(V3D[i,0]-1),int(V3D[i,1]-1),int(V3D[i,2]-1)]=charge[i]
+                    if dospin:
+                        for i in range(len(V3D)):
+                            mesh_mag[int(V3D[i,0]-1),int(V3D[i,1]-1),int(V3D[i,2]-1)]=spin[i]
+                            mesh_mag_vec[int(V3D[i,0]-1),int(V3D[i,1]-1),int(V3D[i,2]-1),0]=B_x[i]
+                            mesh_mag_vec[int(V3D[i,0]-1),int(V3D[i,1]-1),int(V3D[i,2]-1),1]=B_y[i]
+                            mesh_mag_vec[int(V3D[i,0]-1),int(V3D[i,1]-1),int(V3D[i,2]-1),2]=B_z[i]
+                    if vec_f:
+                        point_cloud=pv.PolyData(nc_fort.multmatmul(latt,(V3D[:,0:3]-0.5)/np.array((nx,ny,nz)),len(V3D[:,0])))
+                        point_cloud['scalars']=spin/np.max(spin)
+                        point_cloud['vectors']=V3D[:,4:7]/np.max(spin)
+                        mask = point_cloud['scalars'] < vc
+                        point_cloud['scalars'][mask] = 0
+                        geom = pv.Arrow()
+                        glyphs = point_cloud.glyph(orient="vectors", scale='scalars', geom=geom,tolerance=tol)
+                        p.add_mesh(glyphs,show_scalar_bar=False, lighting=False, cmap='coolwarm')
+
+                        
                 else:
                     noncollinear=False
                     charge=V3D[:,3]
@@ -726,9 +901,10 @@ def main():
         #print("DEN: ",denfile)
         #print("Charge: ",docharge)
         #print("Spin: ",dospin)
+        docharge=False
         if noncollinear and not docharge:    
                 
-        
+
             mesh3D_x=np.zeros((nx,ny,nz))
             mesh3D_y=np.zeros((nx,ny,nz))
             mesh3D_z=np.zeros((nx,ny,nz))
@@ -780,7 +956,11 @@ def main():
                 iy=1
             if iz==0:
                 iz=1
-    
+            #iz=3
+            #iz=4
+            #ix=4
+            #iy=4
+            
             #sys.exit()
             #ix,iy,iz=[8,8,3]
             N=500
@@ -789,6 +969,8 @@ def main():
             y=np.linspace(0.1,0.9,iy,endpoint=True)
             z=np.linspace(0.1,0.9,iz,endpoint=True)
 
+
+            
             gx,gy,gz=np.meshgrid(x,y,z)
             gx=gx.reshape(ix*iy*iz)
             gy=gy.reshape(ix*iy*iz)
@@ -798,15 +980,26 @@ def main():
             point_grid[:,0]=gx
             point_grid[:,1]=gy
             point_grid[:,2]=gz
-    
+
+            #point_grid=np.zeros((len(frac)*ix*iy*iz,3))
+            #for i in range(len(frac)):
+            #    point_grid[i*ix*iy*iz:(i+1)*ix*iy*iz,0]=gx+frac[i,0]
+            #    point_grid[i*ix*iy*iz:(i+1)*ix*iy*iz,1]=gy+frac[i,1]
+            #    point_grid[i*ix*iy*iz:(i+1)*ix*iy*iz,2]=gz+frac[i,2]
             
+            
+            
+
+
+
         
             if field:
                 #for m,gpoint in enumerate(point_grid):
                 #i,j,k=gpoint
                 #    track_r=field_lines(np.array([i,j,k]),track_r)#map[m][0:counter[m]])
                 lines,mags,n_track=field_lines(point_grid)            
-                mags=np.power(mags,0.45)
+
+                #mags=np.power(mags,0.45)
                 #mags=mags/np.max(mags)
     
                 for k in range(2*len(point_grid)):
@@ -814,12 +1007,12 @@ def main():
                         line_points=lines[k,0:n_track[k],:]
                         mag=mags[k,0:n_track[k]]
     
-                        line_points=nc_fort.multmatmul(latt,line_points,len(line_points))
+                        #line_points=nc_fort.multmatmul(latt,line_points,len(line_points))
                         mag[0]=mag[1]            
                         #mag=mag/np.max(mag)
                         #mag[mag<0.3*np.max(mag)]=0#0.5*np.max(mag)
                         
-                        r=0.008
+                        r=0.004
                         
                         polyLine = pv.PolyData(line_points)
                         polyLine.points = line_points
@@ -829,8 +1022,10 @@ def main():
                         polyLine.lines = theCell
                         tube = polyLine.tube(radius=r)
                         #p.add_mesh(tube,color="black", smooth_shading=True)
-                        p.add_mesh(tube,show_scalar_bar=False,cmap="gist_yarg",opacity=mag,pickable=False)#,color="black")#cmap='binary',opacity=mag) 
-    
+                        if not fmag:
+                            p.add_mesh(tube,show_scalar_bar=False,cmap="Reds",opacity=0.95,pickable=False)#,color="black")#cmap='binary',opacity=mag)
+                        else:
+                            p.add_mesh(tube,show_scalar_bar=False,cmap="coolwarm",opacity=0.9,pickable=False)#,color="black")#cmap='binary',opacity=mag)
     
 
     
@@ -893,13 +1088,18 @@ def main():
                 iso=0.05*np.max([np.max(mesh_mag),abs(np.min(mesh_mag))])
             else:
                 iso=np.float(iso[0])
-    
+            '''
             output.insert(END,"VOLUMETRIC\n")
             output.insert(END,"----------\n")
             output.insert(END,"Max: "+str(np.max(mesh_mag))+" Min: "+str(np.min(mesh_mag))+"\n")
             output.insert(END,"Isovalue: "+str(iso)+"\n")
-            output.insert(END," \n") 
-    
+            output.insert(END," \n")
+            '''
+            print("VOLUMETRIC")
+            print("----------")
+            print("Max: "+str(np.max(mesh_mag))+" Min: "+str(np.min(mesh_mag))+"")
+            print("Isovalue: "+str(iso)+"")
+            print(" ") 
                 
             if save or not widgets:
                 contours = sgrid.contour([iso,-iso])
@@ -918,9 +1118,8 @@ def main():
     ########################################################################################################################
     ########################################################################################################################
     ########################################################################################################################
-            
-    
-    
+             
+
     # Add the box
     edges  = np.array([[[0.,0.,0.],[0.,0.,1.]],
                        [[0.,0.,0.],[0.,1.,0.]],
@@ -942,7 +1141,10 @@ def main():
     box = pv.Box([0,1,0,1,0,1])
     
     for i in range(0,12):
-        p.add_lines(edges[i],color="black",width=1.5)
+        if save:
+            p.add_lines(edges[i],color="black",width=5.0)
+        else:
+            p.add_lines(edges[i],color="black",width=1.5)
         
     
     # Do the atoms
@@ -962,9 +1164,15 @@ def main():
                 if (np.isclose(pos[i],centre)).all():
                     break
             vec=np.round(np.matmul(np.linalg.inv(latt),pos[i]),4)
-            string="Atom "+str(i)+":"+"  "+symb[i]+ "  ("+str(vec[0])+" , "+str(vec[1])+" , "+str(vec[2])+")\n"
+            string="Atom %03d %s  ( %6.3f %6.3f %6.3f )" %(i,symb[i],vec[0],vec[1],vec[2])
+            if do_magmom:
+                string+= " SPIN= ( %6.3f %6.3f %6.3f )" %(mom_vec[i][0],mom_vec[i][1],mom_vec[i][2])
+            if do_init_mag:
+                string+= " INIT SPIN= (%6.3f %6.3f %6.3f )" %(init_spin[i][0],init_spin[i][1],init_spin[i][2])
+                
             #print(string)
-            output.insert(END,string)
+            #output.insert(END,string)
+            print(string)
             
     
     
@@ -975,7 +1183,8 @@ def main():
     
     # Do the bonds
     #print("No. atoms: ",len(atoms))
-    output.insert(END,"No. atoms: "+str(len(atoms))+"\n")
+    #output.insert(END,"No. atoms: "+str(len(atoms))+"\n")
+    print("No. atoms: "+str(len(atoms))+"")
     if do_bonds:
         bond_length = []
         bond_name   = []
@@ -1044,14 +1253,15 @@ def main():
             p.add_mesh(cyl,color=atom_colours[j],specular=0.3,specular_power=30,ambient=0.2,diffuse=1,pickable=False)
             #for i in bond_name:
             #   print(i)
-    
-    
+
     
     if do_magmom:
         for i in range(len(pos)):
             if i in hide_num:
                 continue
+            #mom_vec[i]=0.1*np.matmul(latt,mom_vec[i])
             temp_pos=pos[i]-np.array(mom_vec[i])/2
+            
             arrow=pv.Arrow(temp_pos,mom_vec[i],tip_length=0.15, tip_radius=0.09, tip_resolution=20, shaft_radius=0.04, shaft_resolution=20, scale='auto')
             p.add_mesh(arrow,color='b',pickable=False)
     
@@ -1061,16 +1271,18 @@ def main():
         for i in range(len(pos)):
             if i in hide_num:
                 continue
+            #init_spin[i]=0.1*np.matmul(latt,init_spin[i])
             temp_pos=pos[i]-np.array(1.5*init_spin[i])/2
             arrow=pv.Arrow(temp_pos,1.5*init_spin[i],tip_length=0.15, tip_radius=0.09, tip_resolution=20, shaft_radius=0.04, shaft_resolution=20, scale='auto')
             p.add_mesh(arrow,color='g',pickable=False)
-    
+
     try:
-        p.camera.zoom(z)
+        p.camera.zoom(zoom)    
     except:
-        output.insert(END,"Zoom not implemented in this version of PyVista.\n")
+        #output.insert(END,"Zoom not implemented in this version of PyVista.\n")
+        print("Zoom not implemented in this version of PyVista.")
         #print("Zoom not implemented in this version of PyVista.")
-    
+
     
 ###############################################################################################
 
@@ -1082,7 +1294,8 @@ def main():
     
         p.window_size = wind
         if do_verbose:
-            output.insert(END,"Graphic saved!\n")
+            #output.insert(END,"Graphic saved!")
+            print("Graphic saved!")
     p.add_key_event("s", screenshot)
     
     def perpendicular( a ) :
@@ -1180,13 +1393,15 @@ def main():
     p.add_key_event("c",button_c)
     
     
-    
-    
 
+    
         
-    output.insert(END,"Time: "+str(np.round(end-start,4))+" s\n")
+    #output.insert(END,"Time: "+str(np.round(end-start,4))+" s\n")
+    print("Time: "+str(np.round(end-start,4))+" s")
     if save:
-        p.window_size=[5000,5000]
+        p.window_size=[2000,2000]
+
+        p.camera.zoom(zoom)    
         #p.save_graphic(seed+".pdf")
         p.show(title=seed,screenshot=seed+".png")
     else:
@@ -1200,7 +1415,7 @@ def main():
     sys.exit()
     
     
-    window.mainloop()
+
 
 
 if __name__== "__main__":

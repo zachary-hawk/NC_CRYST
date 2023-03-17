@@ -1,7 +1,0 @@
-numpy
-matplotlib
-scipy
-ase
-pyvista
-vtk
-argparse

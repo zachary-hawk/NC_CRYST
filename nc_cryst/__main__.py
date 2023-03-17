@@ -682,6 +682,7 @@ def main():
     
         
             if potfile:
+                print(new_version)
                 if np.shape(V3D)[1]==9:
                     noncollinear=True
                     V1= V3D[:,3]+1j*V3D[:,4]
@@ -690,7 +691,7 @@ def main():
                     
                     
                     B_x=np.real((V3+np.conj(V3))/2)
-                    B_y=np.real(1j*(V3-np.conj(V3))/2)
+                    B_y=-np.real(1j*(V3-np.conj(V3))/2)
                     B_z=np.real((V1-V2)/2)
                 else:
                     noncollinear=False
